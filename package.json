@@ -1,0 +1,233 @@
+{
+  "name": "sln-explorer",
+  "displayName": "C++ 解决方案浏览器 (SLN)",
+  "description": "按 CMake 生成的 .sln 解决方案结构浏览 C++ 工程（解决方案文件夹 → 项目 → 筛选器/目录 → 文件），并提供基于项目清单的符号跳转：Ctrl+左键 / F12 跳定义，Ctrl+F12 跳实现。无需 cpptools、无需 compile_commands.json。",
+  "version": "0.2.0",
+  "publisher": "shiyp-a",
+  "author": {
+    "name": "shiyp-a"
+  },
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "pricing": "Free",
+  "galleryBanner": {
+    "color": "#3A206E",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "sln",
+    "vcxproj",
+    "cmake",
+    "c++",
+    "cpp",
+    "visual studio",
+    "solution explorer",
+    "go to definition",
+    "解决方案",
+    "跳转定义"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "slnExplorerView",
+          "name": "解决方案 (SLN)",
+          "contextualTitle": "解决方案资源管理器",
+          "icon": "$(library)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "slnExplorer.selectSolution",
+        "title": "选择解决方案 (.sln)",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "slnExplorer.openSolution",
+        "title": "在解决方案视图中打开"
+      },
+      {
+        "command": "slnExplorer.goToSymbol",
+        "title": "跳转到定义/实现",
+        "category": "SLN"
+      },
+      {
+        "command": "slnExplorer.refresh",
+        "title": "刷新解决方案",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "slnExplorer.filter",
+        "title": "在解决方案中筛选文件",
+        "icon": "$(search)"
+      },
+      {
+        "command": "slnExplorer.clearFilter",
+        "title": "清除筛选",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "slnExplorer.revealCurrentFile",
+        "title": "在解决方案中定位当前文件",
+        "icon": "$(target)"
+      },
+      {
+        "command": "slnExplorer.openProjectFile",
+        "title": "打开项目文件 (.vcxproj)"
+      },
+      {
+        "command": "slnExplorer.revealInExplorer",
+        "title": "在资源管理器中显示"
+      },
+      {
+        "command": "slnExplorer.revealFileInOS",
+        "title": "在文件管理器中打开所在位置"
+      },
+      {
+        "command": "slnExplorer.copyPath",
+        "title": "复制完整路径"
+      },
+      {
+        "command": "slnExplorer.copyRelativePath",
+        "title": "复制相对路径"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "slnExplorer.selectSolution",
+          "when": "view == slnExplorerView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "slnExplorer.refresh",
+          "when": "view == slnExplorerView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "slnExplorer.revealCurrentFile",
+          "when": "view == slnExplorerView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "slnExplorer.filter",
+          "when": "view == slnExplorerView",
+          "group": "navigation@4"
+        },
+        {
+          "command": "slnExplorer.clearFilter",
+          "when": "view == slnExplorerView && slnExplorer.hasFilter",
+          "group": "navigation@5"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "slnExplorer.openProjectFile",
+          "when": "view == slnExplorerView && viewItem == project",
+          "group": "1_open"
+        },
+        {
+          "command": "slnExplorer.revealInExplorer",
+          "when": "view == slnExplorerView && viewItem == file",
+          "group": "2_reveal"
+        },
+        {
+          "command": "slnExplorer.revealFileInOS",
+          "when": "view == slnExplorerView && viewItem =~ /^(file|group|project)$/",
+          "group": "2_reveal"
+        },
+        {
+          "command": "slnExplorer.copyPath",
+          "when": "view == slnExplorerView && viewItem =~ /^(file|group|project|folder)$/",
+          "group": "3_copy"
+        },
+        {
+          "command": "slnExplorer.copyRelativePath",
+          "when": "view == slnExplorerView && viewItem =~ /^(file|group)$/",
+          "group": "3_copy"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "slnExplorer.revealCurrentFile",
+          "when": "resourceScheme == file",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "slnExplorer.goToSymbol",
+          "when": "editorLangId == cpp || editorLangId == c || editorLangId == objective-cpp",
+          "group": "navigation@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "slnExplorer.openSolution",
+          "when": "resourceExtname == .sln",
+          "group": "navigation@1"
+        },
+        {
+          "command": "slnExplorer.revealCurrentFile",
+          "when": "resourceScheme == file",
+          "group": "navigation@9"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SLN 解决方案资源管理器",
+      "properties": {
+        "slnExplorer.solutionPath": {
+          "type": "string",
+          "default": "",
+          "description": "要加载的 .sln 路径，支持 ${workspaceFolder}；留空则自动在工作区中查找。"
+        },
+        "slnExplorer.showExtensions": {
+          "type": "boolean",
+          "default": true,
+          "description": "文件节点是否显示扩展名。"
+        },
+        "slnExplorer.showPredefinedTargets": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否显示 CMake 生成的 CMakePredefinedTargets（ALL_BUILD / ZERO_CHECK / INSTALL）文件夹。"
+        },
+        "slnExplorer.excludeProjectPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "需要隐藏的项目名匹配串，例如 [\"ALL_BUILD\", \"ZERO_CHECK\", \"INSTALL\"]。"
+        },
+        "slnExplorer.enableDefinitionProvider": {
+          "type": "boolean",
+          "default": true,
+          "description": "注册定义提供者：Ctrl+左键（或 F12）在解决方案内查找 C/C++ 符号的定义/实现。装了 cpptools 且 IntelliSense 正常时可关闭。"
+        },
+        "slnExplorer.definitionSearchBudgetMs": {
+          "type": "number",
+          "default": 1200,
+          "description": "符号搜索的时间预算（毫秒），超时则返回已找到的结果。"
+        },
+        "slnExplorer.searchDepth": {
+          "type": "number",
+          "default": 6,
+          "description": "在工作区中自动查找 .sln 时的目录递归深度。"
+        }
+      }
+    }
+  }
+}

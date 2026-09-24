@@ -1,0 +1,7 @@
+.vscode/**
+.gitignore
+**/*.vsix
+**/.smoke-test.js
+**/.diag*.js
+**/*.map
+**/*.log
