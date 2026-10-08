@@ -720,6 +720,31 @@ class SolutionProvider {
     }
 
     /** 当前项目没找到时，扩展到被引用项目的头文件 */
+    /** 解决方案内所有项目的源文件（去重）。用于 solution 级引用搜索 */
+    async solutionFiles() {
+        if (!this.solution) {
+            return [];
+        }
+        await this.ensureAllParsed();
+        const seen = new Set();
+        const out = [];
+        for (const p of this.solution.projects) {
+            if (p.isFolder || !p.projectPath) {
+                continue;
+            }
+            const parsed = this.ensureProjectParsed(this.projectNodeFor(p));
+            for (const f of parsed.files) {
+                const key = pathKey(f.abs);
+                if (seen.has(key)) {
+                    continue;
+                }
+                seen.add(key);
+                out.push(f);
+            }
+        }
+        return out;
+    }
+
     async dependentFilesFor(project) {
         const parsed = this.ensureProjectParsed(project);
         const out = [];

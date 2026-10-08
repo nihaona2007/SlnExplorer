@@ -1,8 +1,8 @@
 {
   "name": "sln-explorer",
   "displayName": "C++ 解决方案浏览器 (SLN)",
-  "description": "按 CMake 生成的 .sln 解决方案结构浏览 C++ 工程（解决方案文件夹 → 项目 → 筛选器/目录 → 文件），并提供基于项目清单的符号跳转：Ctrl+左键 / F12 跳定义，Ctrl+F12 跳实现。无需 cpptools、无需 compile_commands.json。",
-  "version": "0.2.0",
+  "description": "按 CMake 生成的 .sln 解决方案结构浏览 C++ 工程（解决方案文件夹 → 项目 → 筛选器/目录 → 文件），并提供基于项目清单的符号导航：Ctrl+左键 / F12 跳定义，Ctrl+F12 跳实现，Shift+Alt+F 查找所有引用。无需 cpptools、无需 compile_commands.json。",
+  "version": "0.3.0",
   "publisher": "shiyp-a",
   "author": {
     "name": "shiyp-a"
@@ -100,8 +100,21 @@
         "title": "复制完整路径"
       },
       {
+        "command": "slnExplorer.findReferences",
+        "title": "查找所有引用",
+        "category": "SLN"
+      },
+      {
         "command": "slnExplorer.copyRelativePath",
         "title": "复制相对路径"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "slnExplorer.findReferences",
+        "key": "shift+alt+f",
+        "mac": "shift+alt+f",
+        "when": "editorTextFocus && (editorLangId == cpp || editorLangId == c || editorLangId == objective-cpp || editorLangId == objective-c)"
       }
     ],
     "menus": {
@@ -171,6 +184,11 @@
           "command": "slnExplorer.goToSymbol",
           "when": "editorLangId == cpp || editorLangId == c || editorLangId == objective-cpp",
           "group": "navigation@1"
+        },
+        {
+          "command": "slnExplorer.findReferences",
+          "when": "editorLangId == cpp || editorLangId == c || editorLangId == objective-cpp",
+          "group": "navigation@2"
         }
       ],
       "explorer/context": [
@@ -221,6 +239,31 @@
           "type": "number",
           "default": 1200,
           "description": "符号搜索的时间预算（毫秒），超时则返回已找到的结果。"
+        },
+        "slnExplorer.enableReferenceProvider": {
+          "type": "boolean",
+          "default": true,
+          "description": "注册引用提供者，使 Shift+F12（查找所有引用）也使用本插件的解决方案范围搜索。装了 cpptools / clangd 且 IntelliSense 正常时可关闭。"
+        },
+        "slnExplorer.referenceSearchScope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "dependencies",
+            "solution"
+          ],
+          "enumDescriptions": [
+            "只搜索当前文件所属项目",
+            "当前项目及其引用的项目（推荐）",
+            "整个解决方案（首次会解析全部项目，较慢）"
+          ],
+          "default": "dependencies",
+          "description": "Shift+Alt+F / Shift+F12 查找引用时的搜索范围。"
+        },
+        "slnExplorer.referenceSearchBudgetMs": {
+          "type": "number",
+          "default": 2500,
+          "description": "查找引用的时间预算（毫秒），超时则返回已找到的结果。"
         },
         "slnExplorer.searchDepth": {
           "type": "number",

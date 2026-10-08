@@ -1,6 +1,6 @@
 # C++ 解决方案浏览器 (SLN)
 
-在 VS Code / CodeBuddy / Cursor 中，按 **CMake 生成的 `.sln` 解决方案结构** 浏览 C++ 工程，并提供基于项目清单的符号跳转。
+在 VS Code / CodeBuddy / Cursor 中，按 **CMake 生成的 `.sln` 解决方案结构** 浏览 C++ 工程，并提供基于项目清单的符号导航：跳转定义 / 实现、查找所有引用。
 
 解决的问题：CMake 生成的工程里，物理目录（`build/`、`CMakeFiles/`、中间产物）和代码组织毫无关系；而资源管理器只会按物理目录展开。本插件直接还原 Visual Studio「解决方案资源管理器」的视图。
 
@@ -22,6 +22,7 @@ MySolution (解决方案)
 - **项目依赖**：项目下的「引用」节点列出 `ProjectReference`（包含 VS 生成器写进 vcxproj 的依赖）。
 - **筛选与定位**：按文件名关键字筛选整棵解决方案树；一键把当前编辑的文件在树中展开定位。
 - **跳转定义 / 实现**：Ctrl+左键（或 F12）跳定义，Ctrl+F12 只跳实现，编辑器右键「跳转到定义/实现」列出全部候选。
+- **查找所有引用**：光标放在函数 / 变量 / 类型上，按 `Shift+Alt+F`（或原生 `Shift+F12`），在 VS Code 标准「引用」面板中按文件分组列出全部使用位置，双击即跳转；定义、声明、普通调用分别标注。
 - **懒加载 + 磁盘缓存**：项目只在展开时才解析，结果按文件 mtime/size 缓存到磁盘，大解决方案二次打开无感。
 - **零依赖**：不调用 MSBuild、不需要 cpptools、不需要 `compile_commands.json`，纯文本解析。
 
@@ -36,6 +37,22 @@ MySolution (解决方案)
 1. 打开工作区后，侧边栏「资源管理器」底部出现视图 **解决方案 (SLN)**。
 2. 插件自动在工作区中查找 `.sln`（含被 gitignore 的 `build/` 目录），多个时取体积最大的那个；也可以用标题栏第一个按钮手动选择。
 3. 单击文件节点打开；右键提供：打开 `.vcxproj`、在资源管理器中显示、在文件管理器中打开、复制（相对）路径。
+
+## 查找所有引用
+
+光标停在符号上按 `Shift+Alt+F`（也可右键「查找所有引用」，或用原生 `Shift+F12`），结果在 VS Code 的引用面板中展示，双击条目直接打开对应行列。
+
+- **跳过注释与字符串**：只会列出真正的代码出现位置。
+- **性质标注**：命中会按 `定义 / 声明 / 使用` 分类，方便区分原型、实现和调用点。
+- **搜索范围**（`slnExplorer.referenceSearchScope`，默认 `dependencies`）：
+
+  | 取值 | 范围 |
+  | --- | --- |
+  | `project` | 只搜索当前文件所属项目 |
+  | `dependencies` | 当前项目 + 它引用的项目（推荐） |
+  | `solution` | 整个解决方案（首次会解析全部项目，较慢；适合跨模块找调用） |
+
+- **快捷键冲突**：`Alt+Shift+F` 在 VS Code 里默认是「格式化文档」。本插件的绑定加了「仅 C/C++ 文件」的条件，通常优先生效；若你的环境里仍是格式化，打开键盘快捷方式设置搜索 `slnExplorer.findReferences` 手动改键，或直接用右键菜单 / `Shift+F12`。
 
 ## 跳转说明
 
@@ -59,6 +76,7 @@ MySolution (解决方案)
 | `SLN: 在解决方案中定位当前文件` | 在树中展开并选中当前文件 |
 | `SLN: 在解决方案中筛选文件` / `清除筛选` | 文件名关键字筛选 |
 | `SLN: 跳转到定义/实现` | 以列表方式展示全部候选 |
+| `SLN: 查找所有引用` | 默认快捷键 `Shift+Alt+F`，在引用面板列出全部使用位置 |
 | `SLN: 打开项目文件 (.vcxproj)` | 打开项目文件本身 |
 
 ## 配置
@@ -72,17 +90,20 @@ MySolution (解决方案)
 | `slnExplorer.searchDepth` | 自动查找 `.sln` 的递归深度，默认 `6` |
 | `slnExplorer.enableDefinitionProvider` | 是否注册 Ctrl+左键跳转，默认 `true` |
 | `slnExplorer.definitionSearchBudgetMs` | 符号搜索时间预算（毫秒），默认 `1200` |
+| `slnExplorer.enableReferenceProvider` | 是否注册引用提供者（`Shift+F12`），默认 `true` |
+| `slnExplorer.referenceSearchScope` | 查找引用的范围：`project` / `dependencies` / `solution`，默认 `dependencies` |
+| `slnExplorer.referenceSearchBudgetMs` | 查找引用的时间预算（毫秒），默认 `2500` |
 
 ## 工作原理
 
 - `src/slnParser.js`：逐行解析 `.sln`，还原解决方案文件夹层级。
 - `src/vcxprojParser.js`：解析 `.vcxproj` 与 `.vcxproj.filters`，跳过 `%(...)`、通配符与未展开的 `$(...)` 变量。
 - `src/solutionProvider.js`：`TreeDataProvider`，懒加载 + 文件路径索引 + 磁盘缓存。
-- `src/symbolLocator.js`：基于正则的符号定位（实现/声明/类型/变量/宏），带关键字粗筛、调用上下文过滤与时间预算。
+- `src/symbolLocator.js`：基于正则的符号定位（实现/声明/类型/变量/宏）与引用扫描。引用走逐行快路径：先按子串粗筛，只在命中的行上做注释/字符串屏蔽与性质判定。
 
 ## 已知限制
 
-- 跳转是文本级实现，不做语义/重载解析，多处命中时给出候选列表。
+- 跳转与引用都是文本级实现，不做语义/重载解析：同名符号（不同类、不同命名空间）会被一起列出；多处命中时给出候选列表。
 - 只解析文件清单与引用，不提供补全、诊断等 IntelliSense 能力。
 - 主要针对 CMake + Visual Studio 生成器产物；Makefile / Ninja 生成器不产出 `.sln`，本插件不适用（这类工程请用 `compile_commands.json` + clangd）。
 

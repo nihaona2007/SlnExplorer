@@ -309,4 +309,232 @@ function symbolAt(document, position, wordPattern) {
     return { name, qualifier, range, raw };
 }
 
-module.exports = { findSymbols, symbolAt, readText, HEADER_EXT, SOURCE_EXT };
+// ---------------- 引用搜索 ----------------
+
+/** findSymbols 的 kind → 引用列表中展示的性质 */
+const DECL_KIND = {
+    implementation: 'definition',
+    declaration: 'declaration',
+    type: 'declaration',
+    macro: 'declaration',
+    variable: 'declaration'
+};
+
+/**
+ * 把注释与字符串字面量替换成等长空格（保留列号）。
+ * state.inBlock 用于跨行的块注释。
+ */
+function maskLiterals(raw, state) {
+    const len = raw.length;
+    let out = '';
+    let i = 0;
+    while (i < len) {
+        if (state.inBlock) {
+            const end = raw.indexOf('*/', i);
+            if (end < 0) {
+                out += ' '.repeat(len - i);
+                return out;
+            }
+            out += ' '.repeat(end + 2 - i);
+            i = end + 2;
+            state.inBlock = false;
+            continue;
+        }
+        const ch = raw[i];
+        const next = raw[i + 1];
+        if (ch === '/' && next === '/') {
+            out += ' '.repeat(len - i);
+            return out;
+        }
+        if (ch === '/' && next === '*') {
+            state.inBlock = true;
+            out += '  ';
+            i += 2;
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            let j = i + 1;
+            while (j < len) {
+                if (raw[j] === '\\') {
+                    j += 2;
+                    continue;
+                }
+                if (raw[j] === ch) {
+                    j++;
+                    break;
+                }
+                j++;
+            }
+            if (j > len) {
+                j = len;
+            }
+            out += ' '.repeat(j - i);
+            i = j;
+            continue;
+        }
+        out += ch;
+        i++;
+    }
+    return out;
+}
+
+/** 只推进块注释状态，不构造替换字符串（用于不含目标符号的行，快路径） */
+function updateBlockState(raw, state) {
+    let i = 0;
+    while (i < raw.length) {
+        if (state.inBlock) {
+            const end = raw.indexOf('*/', i);
+            if (end < 0) {
+                return;
+            }
+            i = end + 2;
+            state.inBlock = false;
+            continue;
+        }
+        const start = raw.indexOf('/*', i);
+        if (start < 0) {
+            return;
+        }
+        const end = raw.indexOf('*/', start + 2);
+        if (end < 0) {
+            state.inBlock = true;
+            return;
+        }
+        i = end + 2;
+    }
+}
+
+/** 在单行文本上判定哪些列是定义/声明（复用 buildPatterns 的成熟规则） */
+function kindsInLine(raw, name, patterns, maxIndex) {
+    const kinds = new Map();
+    for (const pattern of patterns) {
+        pattern.re.lastIndex = 0;
+        let m;
+        while ((m = pattern.re.exec(raw)) !== null) {
+            // 名称组总是在匹配文本的最后出现（返回类型 / 限定名都排在它前面）
+            const index = m.index + m[0].lastIndexOf(name);
+            if (index > maxIndex) {
+                continue; // 落在后续行，不属于当前行
+            }
+            if (!kinds.has(index)) {
+                kinds.set(index, DECL_KIND[pattern.kind] || 'declaration');
+            }
+            if (m[0].length === 0) {
+                pattern.re.lastIndex++;
+            }
+        }
+    }
+    return kinds;
+}
+
+/**
+ * 在候选文件中查找符号的全部出现位置（引用 / 定义）。
+ * 逐行扫描，跳过注释与字符串；返回的 line/column 均为 0 基。
+ */
+function findUsages(options) {
+    const {
+        name,
+        files = [],
+        maxFiles = 1200,
+        budgetMs = 4000
+    } = options;
+
+    if (!name) {
+        return [];
+    }
+    const wordRe = new RegExp('\\b' + escapeRegExp(name) + '\\b', 'g');
+    const patterns = buildPatterns(name, '');
+    const results = [];
+    const started = Date.now();
+    let scanned = 0;
+
+    for (const file of files) {
+        if (scanned >= maxFiles || Date.now() - started > budgetMs) {
+            break;
+        }
+        const ext = path.extname(file.abs).toLowerCase();
+        if (!HEADER_EXT.has(ext) && !SOURCE_EXT.has(ext)) {
+            continue;
+        }
+        const text = readText(file.abs);
+        if (!text || text.indexOf(name) < 0) {
+            continue;
+        }
+        scanned++;
+
+        const rows = [];
+        const lines = [];
+        const state = { inBlock: false };
+        let lineStart = 0;
+        let line = 0;
+        while (lineStart < text.length) {
+            let lineEnd = text.indexOf('\n', lineStart);
+            const last = lineEnd < 0;
+            if (last) {
+                lineEnd = text.length;
+            }
+            const raw = text.slice(lineStart, lineEnd);
+            lines.push(raw);
+            if (raw.indexOf(name) < 0) {
+                // 快路径：不含目标符号，只维护跨行注释状态
+                updateBlockState(raw, state);
+            } else {
+                const needMask = state.inBlock
+                    || raw.indexOf('//') >= 0
+                    || raw.indexOf('/*') >= 0
+                    || raw.indexOf('"') >= 0
+                    || raw.indexOf("'") >= 0;
+                const code = needMask ? maskLiterals(raw, state) : raw;
+                if (code.indexOf(name) >= 0) {
+                    const columns = [];
+                    wordRe.lastIndex = 0;
+                    let m;
+                    while ((m = wordRe.exec(code)) !== null) {
+                        columns.push(m.index);
+                        if (m[0].length === 0) {
+                            wordRe.lastIndex++;
+                        }
+                    }
+                    if (columns.length) {
+                        rows.push({ line, raw, columns });
+                    }
+                }
+            }
+            line++;
+            if (last) {
+                break;
+            }
+            lineStart = lineEnd + 1;
+        }
+
+        if (!rows.length) {
+            continue;
+        }
+        for (const row of rows) {
+            // 带上后两行作为上下文：函数体 '{' 或初始化列表常常在下一行
+            const window = lines.slice(row.line, row.line + 3).join('\n');
+            const kinds = kindsInLine(window, name, patterns, row.raw.length);
+            for (const column of row.columns) {
+                results.push({
+                    abs: file.abs,
+                    line: row.line,
+                    column,
+                    preview: row.raw.trim(),
+                    kind: kinds.get(column) || 'usage'
+                });
+            }
+        }
+    }
+
+    results.sort((a, b) => {
+        const ka = pathKey(a.abs);
+        const kb = pathKey(b.abs);
+        if (ka !== kb) {
+            return ka < kb ? -1 : 1;
+        }
+        return a.line - b.line || a.column - b.column;
+    });
+    return results;
+}
+
+module.exports = { findSymbols, findUsages, symbolAt, readText, HEADER_EXT, SOURCE_EXT };

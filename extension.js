@@ -4,8 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
 const { SolutionProvider } = require('./src/solutionProvider');
-const { findSolutionFiles, resolvePathTemplate } = require('./src/utils');
-const { findSymbols, symbolAt } = require('./src/symbolLocator');
+const { findSolutionFiles, resolvePathTemplate, pathKey } = require('./src/utils');
+const { findSymbols, findUsages, symbolAt } = require('./src/symbolLocator');
 
 const STATE_KEY = 'slnExplorer.lastSolution';
 const CPP_SELECTOR = [
@@ -54,9 +54,18 @@ function registerLanguageProviders(context) {
             async provideImplementation(document, position) {
                 return toLocations(await locateSymbol(document, position, { onlyKinds: ['implementation'] }));
             }
+        }),
+        vscode.languages.registerReferenceProvider(CPP_SELECTOR, {
+            async provideReferences(document, position) {
+                if (!vscode.workspace.getConfiguration('slnExplorer').get('enableReferenceProvider', true)) {
+                    return null;
+                }
+                const results = await locateUsages(document, position);
+                return results.length ? results.map(toLocation) : null;
+            }
         })
     );
-    log('已注册 C/C++ 定义/实现提供者（Ctrl+左键、F12）');
+    log('已注册 C/C++ 定义/实现/引用提供者（Ctrl+左键、F12、Shift+F12）');
 }
 
 async function activate(context) {
@@ -141,6 +150,7 @@ async function activate(context) {
         }
     });
     safeRegister(context, 'slnExplorer.goToSymbol', () => goToSymbol());
+    safeRegister(context, 'slnExplorer.findReferences', () => findReferences());
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
@@ -398,6 +408,83 @@ async function goToSymbol() {
     if (picked) {
         await jumpTo(picked.result);
     }
+}
+
+// ---------------- 查找引用 ----------------
+
+/** 收集候选搜索范围：当前项目 / + 依赖项目 / 整个解决方案 */
+async function usageScopeFiles(currentFile, scope) {
+    const files = await provider.candidateFilesFor(currentFile);
+    if (scope === 'project') {
+        return files;
+    }
+    if (scope === 'solution') {
+        return provider.solutionFiles();
+    }
+    const project = await provider.projectForFile(currentFile);
+    if (!project) {
+        return files;
+    }
+    const extra = await provider.dependentFilesFor(project);
+    if (!extra.length) {
+        return files;
+    }
+    const seen = new Set(files.map((f) => pathKey(f.abs)));
+    for (const f of extra) {
+        const key = pathKey(f.abs);
+        if (!seen.has(key)) {
+            seen.add(key);
+            files.push(f);
+        }
+    }
+    return files;
+}
+
+async function locateUsages(document, position) {
+    if (!provider || !provider.solution || document.uri.scheme !== 'file') {
+        log(`查找引用失败：${!provider ? '插件未初始化' : '解决方案尚未加载'}（${document.uri.fsPath}）`);
+        return [];
+    }
+    const symbol = symbolAt(document, position);
+    if (!symbol || !symbol.name) {
+        log(`查找引用失败：光标处没有取到符号（${document.uri.fsPath}:${position.line + 1}）`);
+        return [];
+    }
+    const cfg = vscode.workspace.getConfiguration('slnExplorer');
+    const scope = cfg.get('referenceSearchScope', 'dependencies');
+    const budget = cfg.get('referenceSearchBudgetMs', 2500);
+    const started = Date.now();
+    const files = await usageScopeFiles(document.uri.fsPath, scope);
+    const results = findUsages({
+        name: symbol.name,
+        files,
+        maxFiles: scope === 'solution' ? 5000 : 1200,
+        budgetMs: budget
+    });
+    log(`查找引用 ${symbol.name}：范围 ${scope}，候选 ${files.length} 个文件，命中 ${results.length} 处，用时 ${Date.now() - started}ms`);
+    return results;
+}
+
+/** Shift+Alt+F：在引用面板中列出符号的全部使用位置 */
+async function findReferences() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        return;
+    }
+    const position = editor.selection.active;
+    const results = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: 'SLN：正在查找引用…' },
+        () => locateUsages(editor.document, position)
+    );
+    if (!results.length) {
+        const symbol = symbolAt(editor.document, position);
+        vscode.window.showInformationMessage(
+            `在解决方案范围内没有找到 ${symbol ? symbol.name : '该符号'} 的引用`
+        );
+        return;
+    }
+    const locations = results.map(toLocation);
+    await vscode.commands.executeCommand('editor.action.showReferences', editor.document.uri, position, locations);
 }
 
 function deactivate() {

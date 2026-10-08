@@ -1,5 +1,19 @@
 # 更新日志
 
+## [0.3.0]
+
+### 新增
+
+- **查找所有引用**：光标停在符号上按 `Shift+Alt+F`（或原生 `Shift+F12`、编辑器右键菜单），在 VS Code 标准「引用」面板中按文件分组列出全部使用位置，双击跳转。
+- 引用结果按「定义 / 声明 / 使用」分类标注，并自动跳过注释与字符串中的内容。
+- 引用搜索范围可配置 `slnExplorer.referenceSearchScope`：`project`（当前项目）/ `dependencies`（当前项目 + 引用项目，默认）/ `solution`（整个解决方案）。
+- 配置项 `slnExplorer.enableReferenceProvider`（默认开）与 `slnExplorer.referenceSearchBudgetMs`（默认 2500ms）。
+
+### 改进
+
+- 引用扫描改为逐行快路径：子串粗筛 + 仅在命中行做注释/字符串屏蔽与性质判定，900+ 文件的项目搜索耗时从约 2.7s 降到约 0.1s。
+- 分类判定改用「命中行 + 后两行」窗口，正确识别函数体 `{` 位于下一行的实现。
+
 ## [0.2.0]
 
 ### 新增
