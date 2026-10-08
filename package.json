@@ -2,7 +2,7 @@
   "name": "sln-explorer",
   "displayName": "C++ 解决方案浏览器 (SLN)",
   "description": "按 CMake 生成的 .sln 解决方案结构浏览 C++ 工程（解决方案文件夹 → 项目 → 筛选器/目录 → 文件），并提供基于项目清单的符号导航：Ctrl+左键 / F12 跳定义，Ctrl+F12 跳实现，Shift+Alt+F 查找所有引用。无需 cpptools、无需 compile_commands.json。",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "shiyp-a",
   "author": {
     "name": "shiyp-a"
@@ -38,8 +38,17 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "slnExplorerContainer",
+          "title": "解决方案 (SLN)",
+          "icon": "images/activity-icon.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "slnExplorerContainer": [
         {
           "id": "slnExplorerView",
           "name": "解决方案 (SLN)",

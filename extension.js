@@ -111,7 +111,12 @@ async function activate(context) {
         if (target && treeView) {
             const roots = provider.getChildren();
             if (roots && roots.length) {
-                await treeView.reveal(roots[0], { focus: true, expand: 1 });
+                await focusSolutionView();
+                try {
+                    await treeView.reveal(roots[0], { focus: true, expand: 1 });
+                } catch (e) {
+                    log(`定位解决方案根节点失败：${e.message || e}`);
+                }
             }
         }
     });
@@ -161,6 +166,27 @@ async function activate(context) {
     );
 
     autoSelect(context);
+}
+
+/** 视图挂在活动栏容器里，展开/定位前先确保容器可见 */
+async function focusSolutionView() {
+    try {
+        await vscode.commands.executeCommand('slnExplorerView.focus');
+    } catch (e) {
+        // 命令不可用时忽略（不影响 reveal）
+    }
+}
+
+async function revealNode(node) {
+    if (!treeView || !node) {
+        return;
+    }
+    await focusSolutionView();
+    try {
+        await treeView.reveal(node, { focus: true, select: true, expand: true });
+    } catch (e) {
+        log(`定位节点失败：${e.message || e}`);
+    }
 }
 
 function pickNode(node, nodes) {
@@ -288,7 +314,7 @@ async function revealFile(uriArg) {
         vscode.window.showInformationMessage(`当前解决方案中没有包含该文件：${path.basename(uri.fsPath)}`);
         return;
     }
-    await treeView.reveal(node, { focus: true, select: true, expand: true });
+    await revealNode(node);
 }
 
 async function openFile(filePath) {
